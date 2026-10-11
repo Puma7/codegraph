@@ -1,12 +1,13 @@
 import { Node, Edge, ExtractionResult, ExtractionError, UnresolvedReference } from '../types';
 import { generateNodeId, NodeIdAllocator } from './tree-sitter-helpers';
+import { parseTree, findNodeAtLocation, ParseError } from 'jsonc-parser';
 
 /**
  * LiquidExtractor - Extracts relationships from Liquid template files
  *
  * Liquid is a templating language (used by Shopify, Jekyll, etc.) that doesn't
  * have traditional functions or classes. Instead, we extract:
- * - Section references ({% section 'name' %})
+ * - Section and section-group references ({% section/sections 'name' %})
  * - Snippet references ({% render 'name' %} and {% include 'name' %})
  * - Schema blocks ({% schema %}...{% endschema %})
  */
@@ -102,25 +103,29 @@ export class LiquidExtractor {
    * used only from a JSON template (the OS 2.0 norm) is no longer orphaned.
    */
   private extractShopifyJsonSections(fromNodeId: string): void {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(this.source);
-    } catch {
-      return; // not valid JSON (or a partial) — nothing to link
-    }
-    const sections = (parsed as { sections?: Record<string, { type?: unknown }> })?.sections;
-    if (!sections || typeof sections !== 'object') return;
+    // Shopify's editor prepends a comment to generated templates and groups.
+    // Parse with offsets, but reject incomplete input rather than invent links.
+    const errors: ParseError[] = [];
+    const parsed = parseTree(this.source, errors, { allowTrailingComma: false });
+    if (errors.length || parsed?.type !== 'object') return;
+    const sections = findNodeAtLocation(parsed, ['sections']);
+    if (sections?.type !== 'object') return;
     const seen = new Set<string>();
-    for (const key of Object.keys(sections)) {
-      const type = sections[key]?.type;
-      if (typeof type !== 'string' || seen.has(type)) continue;
+    for (const property of sections.children ?? []) {
+      const value = property.children?.[1];
+      if (value?.type !== 'object') continue;
+      const typeNode = findNodeAtLocation(value, ['type']);
+      if (typeNode?.type !== 'string') continue;
+      const type = typeNode.value as string;
+      if (seen.has(type)) continue;
       seen.add(type);
+      const line = this.getLineNumber(typeNode.offset);
       this.unresolvedReferences.push({
         fromNodeId,
         referenceName: `sections/${type}.liquid`,
         referenceKind: 'references',
-        line: 1,
-        column: 0,
+        line,
+        column: typeNode.offset - this.getLineStart(line),
       });
     }
   }
@@ -280,12 +285,13 @@ export class LiquidExtractor {
   }
 
   /**
-   * Extract {% section 'name' %} references
+   * Extract {% section 'name' %} and {% sections 'group' %} references
    */
   private extractSectionReferences(fileNodeId: string): void {
     // Both spellings, as for render/include above.
-    for (const match of this.findTagOccurrences('section', `['"]([^'"]+)['"]`)) {
+    for (const match of this.findTagOccurrences('section|sections', `['"]([^'"]+)['"]`)) {
       const fullMatch = match.fullMatch;
+      const tagType = match.groups[0];
       const sectionName = match.groups[1];
       const line = this.getLineNumber(match.index);
 
@@ -315,13 +321,13 @@ export class LiquidExtractor {
       });
 
       // Create a component node for the section reference
-      const nodeId = this.nodeIds.generate(this.filePath, 'component', `section:${sectionName}`, line, match.index - this.getLineStart(line));
+      const nodeId = this.nodeIds.generate(this.filePath, 'component', `${tagType}:${sectionName}`, line, match.index - this.getLineStart(line));
 
       const node: Node = {
         id: nodeId,
         kind: 'component',
         name: sectionName!,
-        qualifiedName: `${this.filePath}::section:${sectionName}`,
+        qualifiedName: `${this.filePath}::${tagType}:${sectionName}`,
         filePath: this.filePath,
         language: 'liquid',
         startLine: line,
@@ -343,7 +349,7 @@ export class LiquidExtractor {
       // Add unresolved reference to the section file
       this.unresolvedReferences.push({
         fromNodeId: fileNodeId,
-        referenceName: `sections/${sectionName}.liquid`,
+        referenceName: `sections/${sectionName}.${tagType === 'sections' ? 'json' : 'liquid'}`,
         referenceKind: 'references',
         line,
         column: match.index - this.getLineStart(line),
@@ -357,9 +363,27 @@ export class LiquidExtractor {
   private extractSchema(fileNodeId: string): void {
     // Match {% schema %}...{% endschema %}
     const schemaRegex = /\{%[-]?\s*schema\s*[-]?%\}([\s\S]*?)\{%[-]?\s*endschema\s*[-]?%\}/g;
+    // Schema-looking examples inside non-executing text are not definitions.
+    const suppressedRanges: [number, number][] = [];
+    const tags = /\{%[-]?\s*(\w+|#)([\s\S]*?)[-]?%\}/g;
+    let suppressed: { name: string; start: number } | undefined;
+    let tag: RegExpExecArray | null;
+    while ((tag = tags.exec(this.source)) !== null) {
+      if (suppressed) {
+        if (tag[1] === `end${suppressed.name}`) {
+          suppressedRanges.push([suppressed.start, tags.lastIndex]);
+          suppressed = undefined;
+        }
+      } else if (tag[1] === 'comment' || tag[1] === 'raw') {
+        suppressed = { name: tag[1], start: tag.index };
+      }
+    }
+    if (suppressed) suppressedRanges.push([suppressed.start, this.source.length]);
     let match;
 
     while ((match = schemaRegex.exec(this.source)) !== null) {
+      const index = match.index;
+      if (suppressedRanges.some(([start, end]) => index >= start && index < end)) continue;
       const [fullMatch, schemaContent] = match;
       const startLine = this.getLineNumber(match.index);
       const endLine = this.getLineNumber(match.index + fullMatch.length);
