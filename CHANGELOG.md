@@ -12,6 +12,10 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### New Features
+
+- Liquid capture variables are now searchable in plain templates and multiline Liquid tags, and the documented coverage distinguishes standard Liquid declarations from Shopify dependencies and unsupported host features. (#2498)
+
 ### Fixes
 
 - In VB.NET, every member of a `Structure` is now indexed, including its fields, properties, methods, constructors and nested enums. Before, only the first member was, so the rest could not be found and their callers looked empty.

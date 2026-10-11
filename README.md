@@ -830,7 +830,7 @@ is written):
 | Svelte | `.svelte` | Full support (script extraction, Svelte 5 runes, SvelteKit routes) |
 | Vue | `.vue` | Full support (script + script-setup extraction, Nuxt page/API/middleware routes) |
 | Astro | `.astro` | Full support (frontmatter + script extraction, template component/call references, `src/pages/` routes) |
-| Liquid | `.liquid` | Full support |
+| Liquid | `.liquid` | Partial support (assign/capture variables, literal Shopify snippet/section references and schema; [dialect boundaries](#liquid-coverage)) |
 | Pascal / Delphi | `.pas`, `.dpr`, `.dpk`, `.lpr` | Full support (classes, records, interfaces, enums, DFM/FMX form files) |
 | Lua | `.lua` | Full support (functions, methods with receivers, local variables, `require` imports, call edges) |
 | R | `.R` `.r` | Full support (functions in every assignment form, S4/R5/R6 classes with methods, `library`/`require` imports, `source()` file references, call edges) |
@@ -842,6 +842,23 @@ is written):
 | Solidity | `.sol` | Full support (contracts, libraries, interfaces, structs, enums, modifiers, events, errors, state variables, `import`/`using` directives, `emit`/`revert` calls) |
 | Terraform / OpenTofu | `.tf`, `.tfvars`, `.tofu` | Full support (resources, data sources, modules, variables, outputs, providers incl. aliases, `locals`; `var.`/`local.`/`module.`/resource references with Terraform's per-directory scoping enforced; module calls bridged across the boundary — inputs to the child module's variables, `module.M.out` to the child's output, `source` to the module's files; cloudposse/atmos `remote-state` cross-component wiring when the component is statically named; `provider = aws.east` selections resolved up the module tree; `moved`/`import`/`removed`/`check` block references; `.tfvars` assignments linked to the variables they set) |
 | Nix | `.nix` | Full support (functions with simple/destructured/curried params, `let`/attrset bindings, `inherit`, `import ./path` file edges — `./dir` resolving through `default.nix` — plus NixOS module `imports = [ ./x.nix ]` lists and `callPackage ./pkg.nix` file edges; call edges; module-system option wiring — a config write like `launchd.user.agents.x = { ... }` links to the module declaring `options.launchd.user.agents`, so option flows trace across modules) |
+
+### Liquid coverage
+
+Liquid support is a structural subset, not a complete interpreter or support for every host's extensions. The extractor applies to indexed `.liquid` files; `capture` and `assign` definitions do not require a Shopify directory layout.
+
+| Area | Indexed now | Boundary |
+|---|---|---|
+| Standard Liquid variables | Simple `assign` and `capture` declarations, including whitespace control and bare tags inside a multiline `liquid` tag | No evaluation of captured strings, expression dataflow or variable-read edges; other declaration tags are not covered |
+| Literal template dependencies | Quoted `render`/`include` names become Shopify snippet paths; quoted `section` names become Shopify section paths | These paths describe Shopify conventions, not a generic include loader; variable/computed targets remain unresolved |
+| Shopify schema and JSON | Schema constants and section-type references from the supported JSON template inputs | Editor JSON comments, section groups and schema comment/raw handling are tracked separately in [#2494](https://github.com/colbymchenry/codegraph/issues/2494) / [PR #2496](https://github.com/colbymchenry/codegraph/pull/2496) |
+| Jekyll | Standard declarations in indexed `.liquid` files | Unquoted `include`, `include_relative`, `_includes` lookup and Liquid inside HTML/Markdown/front matter are not supported as Jekyll dependencies |
+| Embedded code and assets | Standalone supported source files are indexed independently | No delegation of inline JavaScript/CSS in `.liquid`; no `asset_url` JS/CSS dependency edges or CSS language registration |
+| Runtime host data | No runtime evaluation | No consumer edges for settings, translations, dynamic block names or Shopify `content_for` |
+
+An absent Liquid dependency edge is not evidence that a template or asset is unused. A file being present in the index does not mean all code embedded in it was parsed. This first coverage extension implements standard `capture` declarations; the remaining host-specific work stays open in [#2498](https://github.com/colbymchenry/codegraph/issues/2498).
+
+The distinction follows the [standard Liquid variable tags](https://shopify.github.io/liquid/tags/variable/) and [Jekyll's own include rules](https://jekyllrb.com/docs/includes/); host extensions need separate routing and resolution, rather than guessing one host's paths for all Liquid projects.
 
 ## Measured cross-file coverage
 
