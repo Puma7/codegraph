@@ -58,6 +58,28 @@ describe('Shopify editor JSON and section groups', () => {
     expect(new Set(result.nodes.map(n => n.id)).size).toBe(result.nodes.length);
   });
 
+  it('preserves strict JSON section dependencies and gives their actual positions', () => {
+    const source = '{\n  "sections": { "main": { "type": "header" } },\n  "order": ["main"]\n}';
+    expect(refs('templates/index.json', source).map(r => [r.referenceName, r.line, r.column]))
+      .toEqual([['sections/header.liquid', 2, 34]]);
+  });
+
+  it('preserves standard Liquid assignments and suppresses commented/raw assignments', () => {
+    const source = "{% assign keep = 'hello' %}\n{% comment %}{% assign hidden = 1 %}{% endcomment %}\n" +
+      "{% raw %}{% assign hidden2 = 2 %}{% endraw %}\n{% assign after = 'world' %}";
+    const result = extract('views/page.liquid', source);
+    expect(result.nodes.filter(n => n.kind === 'variable').map(n => [n.name, n.startLine]))
+      .toEqual([['keep', 1], ['after', 4]]);
+    expect(result.unresolvedReferences).toEqual([]);
+  });
+
+  it.each([
+    "{% # sections 'ghost' %}",
+    "{% liquid\n  # sections 'ghost'\n%}",
+  ])('does not infer group dependencies from inline comments: %s', source => {
+    expect(refs('layout/theme.liquid', source)).toEqual([]);
+  });
+
   it.each(['comment', 'raw'])('ignores schemas and group references inside %s', tag => {
     const source = `{% ${tag} %}{% sections 'ghost' %}{% schema %}{"name":"Ghost"}{% endschema %}{% end${tag} %}\n` +
       '{% schema %}{"name":"Live"}{% endschema %}';
@@ -87,6 +109,52 @@ describe('Shopify editor JSON and section groups', () => {
       expect(cg.getFileDependencies('sections/header-group.json')).toEqual(['sections/header.liquid']);
       expect(cg.getFileDependencies('sections/header.liquid')).toEqual(['snippets/logo.liquid']);
       expect(cg.getFileDependents('sections/header.liquid')).toEqual(['sections/header-group.json']);
+    } finally {
+      cg?.close();
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('leaves commented JSON in a non-Shopify project outside the Liquid index', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codegraph-non-shopify-json-'));
+    let cg: CodeGraph | undefined;
+    try {
+      for (const dir of ['templates', 'sections', 'views']) fs.mkdirSync(path.join(root, dir));
+      fs.writeFileSync(path.join(root, 'templates/page.json'), '/* CMS data */\n{"sections":{"main":{"type":"hero"}}}');
+      fs.writeFileSync(path.join(root, 'sections/hero.liquid'), '<h1>{{ title }}</h1>');
+      fs.writeFileSync(path.join(root, 'views/page.liquid'), "{% assign title = 'Hello' %}");
+      cg = CodeGraph.initSync(root);
+      await cg.indexAll();
+      cg.resolveReferences();
+      expect(cg.getNodesByKind('file').map(n => n.filePath)).not.toContain('templates/page.json');
+      expect(cg.getFileDependents('sections/hero.liquid')).toEqual([]);
+      expect(cg.getNodesByKind('variable').some(n => n.name === 'title')).toBe(true);
+    } finally {
+      cg?.close();
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps group references within their own theme even when a group is missing', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codegraph-group-isolation-'));
+    let cg: CodeGraph | undefined;
+    try {
+      const files = {
+        'first/layout/theme.liquid': "{% sections 'header-group' %}",
+        'second/layout/theme.liquid': "{% sections 'header-group' %}",
+        'second/sections/header-group.json': '/* Generated */\n{"type":"header","name":"Header","sections":{"main":{"type":"header"}},"order":["main"]}',
+        'second/sections/header.liquid': '<header>Header</header>',
+      };
+      for (const [file, source] of Object.entries(files)) {
+        fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+        fs.writeFileSync(path.join(root, file), source);
+      }
+      cg = CodeGraph.initSync(root);
+      await cg.indexAll();
+      cg.resolveReferences();
+      expect(cg.getFileDependencies('first/layout/theme.liquid')).toEqual([]);
+      expect(cg.getFileDependencies('second/layout/theme.liquid')).toEqual(['second/sections/header-group.json']);
+      expect(cg.getFileDependencies('second/sections/header-group.json')).toEqual(['second/sections/header.liquid']);
     } finally {
       cg?.close();
       fs.rmSync(root, { recursive: true, force: true });
