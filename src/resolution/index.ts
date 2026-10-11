@@ -30,6 +30,7 @@ import { clearDartLibraryMemos } from './dart-libraries';
 import { clearVbnetReceiverMemos, isVbMemberRead, isVbPathCall, matchVbMemberRead, matchVbPathCall } from './vbnet-receivers';
 import { gateTypeParameter, clearTypeParameterMemos } from './type-parameters';
 import { gateDartLocal, clearDartLocalScopeMemos } from './dart-local-scope';
+import { gateClassExpression, clearClassExpressionMemos } from './js-class-expressions';
 import { clearCppTypeAliasMemos } from './cpp-type-aliases';
 import { clearCppIncluderMemos } from './cpp-includers';
 import { matchShopifyThemeFile } from './shopify-themes';
@@ -572,6 +573,7 @@ export class ReferenceResolver {
       clearVbnetReceiverMemos(this.context);
       clearTypeParameterMemos(this.context);
       clearDartLocalScopeMemos(this.context);
+      clearClassExpressionMemos(this.context);
       clearCppTypeAliasMemos(this.context);
       clearCppSupertypeMemos(this.context);
       clearCppIncluderMemos(this.context);
@@ -1234,7 +1236,7 @@ export class ReferenceResolver {
       ref,
       this.context,
     );
-    const scoped = this.gateRustScope(candidate, ref);
+    const scoped = this.gateRustScope(gateClassExpression(candidate, ref, this.context), ref);
     const resolved = this.gateSuperSelfCall(
       scoped?.resolvedBy === 'framework' ? this.gateFrameworkLanguage(scoped, ref) : this.gateLanguage(scoped, ref),
       ref,

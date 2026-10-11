@@ -1325,7 +1325,8 @@ export class TreeSitterExtractor {
       }
     }
     // Check for class declarations
-    else if (this.extractor.classTypes.includes(nodeType)) {
+    else if (this.extractor.classTypes.includes(nodeType) &&
+        (nodeType !== 'class' || !!getChildByField(node, 'name'))) {
       // Some languages reuse class_declaration for structs/enums (e.g. Swift)
       const classification = this.extractor.classifyClassNode?.(node) ?? 'class';
       if (classification === 'struct') {
@@ -2134,7 +2135,13 @@ export class TreeSitterExtractor {
     const classNode = this.createNode(kind, name, node, {
       docstring,
       visibility,
-      isExported,
+      // A named expression's inner name is not the exported outer binding.
+      isExported: node.type === 'class' ? false : isExported,
+      // Persist the expression's header so resolution can enforce its inner
+      // name scope without a database migration or reparsing source files.
+      ...(node.type === 'class' && resolvedBody ? {
+        signature: this.source.slice(node.startIndex, resolvedBody.startIndex).trimEnd(),
+      } : {}),
       ...this.cppBodyEnd(resolvedBody),
     });
     if (!classNode) return;
@@ -6847,7 +6854,8 @@ export class TreeSitterExtractor {
 
       // Extract structural nodes found inside function bodies.
       // Each extract method visits its own children, so we return after extracting.
-      if (this.extractor!.classTypes.includes(nodeType)) {
+      if (this.extractor!.classTypes.includes(nodeType) &&
+          (nodeType !== 'class' || !!getChildByField(node, 'name'))) {
         const classification = this.extractor!.classifyClassNode?.(node) ?? 'class';
         if (classification === 'struct') this.extractStruct(node);
         else if (classification === 'enum') this.extractEnum(node);

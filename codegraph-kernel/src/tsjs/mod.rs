@@ -86,7 +86,7 @@ fn is_function_type(kind: &str) -> bool {
 }
 
 fn is_class_type(v: Variant, kind: &str) -> bool {
-    kind == "class_declaration" || (v.is_ts() && kind == "abstract_class_declaration")
+    kind == "class" || kind == "class_declaration" || (v.is_ts() && kind == "abstract_class_declaration")
 }
 
 fn is_variable_type(kind: &str) -> bool {
@@ -688,7 +688,9 @@ impl<'t> Walker<'t> {
             // (the isInsideClassLike + methodTypes overlap is Python/Ruby-only)
             self.extract_function(node, None);
             skip_children = true;
-        } else if is_class_type(self.variant, kind) {
+        } else if is_class_type(self.variant, kind)
+            && (kind != "class" || node.child_by_field_name("name").is_some())
+        {
             self.extract_class(node);
             skip_children = true;
         } else if is_method_type(self.variant, kind)
@@ -825,7 +827,9 @@ impl<'t> Walker<'t> {
             }
         }
 
-        if is_class_type(self.variant, kind) {
+        if is_class_type(self.variant, kind)
+            && (kind != "class" || node.child_by_field_name("name").is_some())
+        {
             self.extract_class(node);
             return;
         }
