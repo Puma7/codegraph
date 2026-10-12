@@ -2136,10 +2136,10 @@ export class TreeSitterExtractor {
       docstring,
       visibility,
       // A named expression's inner name is not the exported outer binding.
-      isExported: node.type === 'class' ? false : isExported,
+      isExported: node.type === 'class' && ['javascript', 'jsx', 'typescript', 'tsx', 'arkts'].includes(this.language) ? false : isExported,
       // Persist the expression's header so resolution can enforce its inner
       // name scope without a database migration or reparsing source files.
-      ...(node.type === 'class' && resolvedBody ? {
+      ...(node.type === 'class' && ['javascript', 'jsx', 'typescript', 'tsx', 'arkts'].includes(this.language) && resolvedBody ? {
         signature: this.source.slice(node.startIndex, resolvedBody.startIndex).trimEnd(),
       } : {}),
       ...this.cppBodyEnd(resolvedBody),
