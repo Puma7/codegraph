@@ -3,7 +3,7 @@ import type { ResolutionContext, ResolvedRef, UnresolvedRef } from './types';
 import { blankStringContents, stripCommentsForRegex } from './strip-comments';
 
 const LANGUAGES = new Set(['javascript', 'jsx', 'typescript', 'tsx', 'arkts']);
-const sourceCache = new WeakMap<ResolutionContext, Map<string, { raw: string[]; code: string[]; comments: string; starts: number[] }>>();
+const sourceCache = new WeakMap<ResolutionContext, Map<string, { raw: string[]; code?: string[]; comments: string; starts: number[] }>>();
 const staticCache = new WeakMap<ResolutionContext, Map<string, boolean>>();
 export function clearJsConstructorMemos(context: ResolutionContext): void {
   sourceCache.delete(context);
@@ -15,18 +15,20 @@ function sourceFor(ref: UnresolvedRef, context: ResolutionContext) {
   if (!files) sourceCache.set(context, files = new Map());
   let cached = files.get(ref.filePath);
   if (!cached) {
-    const source = context.getFileLines?.(ref.filePath)?.join('\n') ?? context.readFile(ref.filePath) ?? '';
+    const raw = context.getFileLines?.(ref.filePath) ?? (context.readFile(ref.filePath) ?? '').split(/\r?\n/);
+    const source = raw.join('\n');
     const comments = stripCommentsForRegex(source, 'javascript');
     const starts = [0];
     for (let i = 0; i < source.length; i++) if (source[i] === '\n') starts.push(i + 1);
-    cached = { raw: source.split(/\r?\n/), code: blankStringContents(comments).split(/\r?\n/), comments, starts };
+    cached = { raw, comments, starts };
     files.set(ref.filePath, cached);
   }
   return cached;
 }
 function lines(ref: UnresolvedRef, context: ResolutionContext, raw = false): string[] {
   const cached = sourceFor(ref, context);
-  return raw ? cached.raw : cached.code;
+  if (raw) return cached.raw;
+  return cached.code ??= blankStringContents(cached.comments).split(/\r?\n/);
 }
 const escape = (name: string): string => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -74,6 +76,15 @@ export function matchImportedConstructorMethod(type: string, receiver: string, m
   if (!context.resolveImport || !context.getNodeById) return undefined;
   const binding = context.getImportMappings?.(ref.filePath, ref.language)?.find(i => i.localName === type && !i.isNamespace);
   if (!binding) return undefined;
+  const imported = context.resolveImport({ ...ref, referenceName: type, referenceKind: 'instantiates' });
+  const cls = imported && context.getNodeById(imported.targetNodeId);
+  // Ordinary unaliased receivers already have the right class identity. Do
+  // not replace their existing inference for returned/destructured values.
+  // Keep recovery for aliases/re-exports and genuinely ambiguous namesakes.
+  if (binding.localName === binding.exportedName && !binding.isDefault && cls?.kind === 'class' && cls.name === type) {
+    const matches = context.getNodesByName(type).filter(n => n.kind === 'class' && LANGUAGES.has(n.language));
+    if (matches.length === 1 && matches[0]!.id === cls.id) return undefined;
+  }
   const scopes = context.getNodesInFile(ref.filePath).filter(n =>
     (n.kind === 'function' || n.kind === 'method') && n.startLine <= ref.line && n.endLine >= ref.line);
   const code = lines(ref, context);
@@ -111,18 +122,16 @@ export function matchImportedConstructorMethod(type: string, receiver: string, m
     return binding.localName === binding.exportedName && !binding.isDefault ? undefined : null;
   }
   if (new RegExp(`(?:\\[[^\\]\\n]*\\b${r}\\b[^\\]\\n]*\\]|\\{[^}\\n]*\\b${r}\\b[^}\\n]*\\})\\s*=`).test(prefix)) return null;
-  const imported = context.resolveImport?.({ ...ref, referenceName: type, referenceKind: 'instantiates' });
-  const cls = imported && context.getNodeById?.(imported.targetNodeId);
   return cls?.kind === 'class' ? methodOnJsClass(cls, method, ref, context) : null;
 }
 
 /** Match explicit super calls by their call-site position and resolved parent. */
 export function matchJsSuperCall(ref: UnresolvedRef, context: ResolutionContext): ResolvedRef | null | undefined {
   if (!LANGUAGES.has(ref.language) || ref.referenceKind !== 'calls') return undefined;
-  const cached = sourceFor(ref, context);
-  const code = cached.raw;
+  const code = sourceCache.get(context)?.get(ref.filePath)?.raw ?? context.getFileLines?.(ref.filePath) ?? lines(ref, context, true);
   const head = code[ref.line - 1]?.slice(ref.column) ?? '';
   if (!/^super\b/.test(head)) return undefined;
+  const cached = sourceFor(ref, context);
   // Sticky matching reads the call at its exact offset in the one cached
   // comment-stripped source, without copying/re-stripping the file suffix.
   const pattern = /super\s*\.\s*([\w$]+)\s*\(/y;

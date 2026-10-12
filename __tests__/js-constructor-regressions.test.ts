@@ -25,6 +25,22 @@ it('preserves both separately scoped unaliased receiver branches', async () => {
     'consumer.js': "import {A,B} from './types';\nfunction invoke(flag) {\n if (flag) {\n const extractor = new A();\n return extractor.extract();\n } else {\n const extractor = new B();\n return extractor.extract();\n }\n}" });
   expect(targets(cg, 'invoke')).toEqual(expect.arrayContaining(['A::extract', 'B::extract']));
 });
+it('preserves a real unaliased instance returned through destructuring to an anonymous callback', async () => {
+  const cg = await index({ 'pool.ts': 'export class Pool { requestParse() {} destroy() {} }',
+    'consumer.ts': "import {Pool} from './pool';\nfunction makePool() { const pool = new Pool(); return {pool}; }\nit('example', () => {\n const {pool} = makePool();\n pool.requestParse();\n pool.destroy();\n});" });
+  const caller = cg.getNodesInFile('consumer.ts').find(n => n.kind === 'file')!;
+  const calls = cg.getOutgoingEdges(caller.id).filter(e => e.kind === 'calls');
+  expect(calls).toContainEqual(expect.objectContaining({ target: cg.getNodesByKind('method').find(n => n.name === 'requestParse')!.id, line: 5 }));
+  expect(calls).toContainEqual(expect.objectContaining({ target: cg.getNodesByKind('method').find(n => n.name === 'destroy')!.id, line: 6 }));
+});
+it('does not strip or duplicate source for ordinary non-super calls', () => {
+  const source = 'function invoke() { helper(); }';
+  const raw = [source];
+  const context = { getFileLines: () => raw, readFile: () => { throw new Error('Source already available'); } } as unknown as ResolutionContext;
+  const spy = vi.spyOn(stripping, 'stripCommentsForRegex');
+  for (let i = 0; i < 2000; i++) expect(matchJsSuperCall({ fromNodeId: 'caller', referenceName: 'helper', referenceKind: 'calls', filePath: 'example.js', language: 'javascript', line: 1, column: source.indexOf('helper') }, context)).toBeUndefined();
+  expect(spy).not.toHaveBeenCalled();
+});
 it('does not call a static method on a constructed instance', async () => {
   const cg = await index({ 'left.js': 'export class Left { static show() {} }',
     'consumer.js': "import {Left as Known} from './left'; function invoke() { const item = new Known(); return item.show(); }" });

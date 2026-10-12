@@ -926,8 +926,15 @@ export class ReferenceResolver {
         return supers;
       },
 
-      getSuperclassNodes: (id: string) => this.queries.getOutgoingEdges(id, ['extends'])
-        .map(edge => this.nodeById(edge.target)).filter((node): node is Node => !!node),
+      getSuperclassNodes: (id: string) => {
+        const key = `extends\0${id}`;
+        const hit = this.supertypeNodeMemo.get(key);
+        if (hit && hit.gen === this.supertypeGen) return hit.nodes;
+        const nodes = this.queries.getOutgoingEdges(id, ['extends'])
+          .map(edge => this.nodeById(edge.target)).filter((node): node is Node => !!node);
+        this.supertypeNodeMemo.set(key, { gen: this.supertypeGen, nodes });
+        return nodes;
+      },
 
       getSupertypeNodes: (id: string) => {
         const hit = this.supertypeNodeMemo.get(id);
@@ -2646,6 +2653,11 @@ export class ReferenceResolver {
    */
   getDetectedFrameworks(): string[] {
     return this.frameworks.map((f) => f.name);
+  }
+
+  /** The project file a module specifier written in `fromFile` names, as its import resolves it; null when none. */
+  resolveModuleFile(specifier: string, fromFile: string, language: Language): string | null {
+    return resolveImportPath(specifier, fromFile, language, this.context);
   }
 
   /** True when a detected router binds navigation calls to its routes (see {@link reopenNavigationsFor}). */
