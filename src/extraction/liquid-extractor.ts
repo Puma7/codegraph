@@ -19,6 +19,7 @@ export class LiquidExtractor {
   private edges: Edge[] = [];
   private unresolvedReferences: UnresolvedReference[] = [];
   private errors: ExtractionError[] = [];
+  private suppressedRanges?: Array<[number, number]>;
 
   constructor(filePath: string, source: string) {
     this.filePath = filePath;
@@ -157,18 +158,13 @@ export class LiquidExtractor {
     const blocks: Array<{ bodyStart: number; body: string }> = [];
     const tags = /\{%[-]?\s*(\w+|#)([\s\S]*?)[-]?%\}/g;
     const braced = new RegExp(`^\\{%[-]?\\s*(${tagPattern})\\s+${argPattern}`);
-    let suppressed: string | undefined;
+    const ranges = this.getSuppressedRanges();
+    let rangeIndex = 0;
     let tag;
     while ((tag = tags.exec(this.source)) !== null) {
       const name = tag[1]!;
-      if (suppressed) {
-        if (name === `end${suppressed}`) suppressed = undefined;
-        continue;
-      }
-      if (name === 'comment' || name === 'raw') {
-        suppressed = name;
-        continue;
-      }
+      while (rangeIndex < ranges.length && tag.index >= ranges[rangeIndex]![1]) rangeIndex++;
+      if (rangeIndex < ranges.length && tag.index >= ranges[rangeIndex]![0]) continue;
       if (name === 'liquid') {
         blocks.push({
           bodyStart: tag.index + tag[0].indexOf(name) + name.length,
@@ -357,28 +353,35 @@ export class LiquidExtractor {
     }
   }
 
-  /**
-   * Extract {% schema %}...{% endschema %} blocks
-   */
-  private extractSchema(fileNodeId: string): void {
-    // Match {% schema %}...{% endschema %}
-    const schemaRegex = /\{%[-]?\s*schema\s*[-]?%\}([\s\S]*?)\{%[-]?\s*endschema\s*[-]?%\}/g;
-    // Schema-looking examples inside non-executing text are not definitions.
-    const suppressedRanges: [number, number][] = [];
+  /** One cached braced comment/raw scanner shared by tags and schemas. */
+  private getSuppressedRanges(): Array<[number, number]> {
+    if (this.suppressedRanges) return this.suppressedRanges;
+    const ranges: [number, number][] = [];
     const tags = /\{%[-]?\s*(\w+|#)([\s\S]*?)[-]?%\}/g;
     let suppressed: { name: string; start: number } | undefined;
     let tag: RegExpExecArray | null;
     while ((tag = tags.exec(this.source)) !== null) {
       if (suppressed) {
         if (tag[1] === `end${suppressed.name}`) {
-          suppressedRanges.push([suppressed.start, tags.lastIndex]);
+          ranges.push([suppressed.start, tags.lastIndex]);
           suppressed = undefined;
         }
       } else if (tag[1] === 'comment' || tag[1] === 'raw') {
         suppressed = { name: tag[1], start: tag.index };
       }
     }
-    if (suppressed) suppressedRanges.push([suppressed.start, this.source.length]);
+    if (suppressed) ranges.push([suppressed.start, this.source.length]);
+    this.suppressedRanges = ranges;
+    return ranges;
+  }
+
+  /**
+   * Extract {% schema %}...{% endschema %} blocks
+   */
+  private extractSchema(fileNodeId: string): void {
+    // Match {% schema %}...{% endschema %}
+    const schemaRegex = /\{%[-]?\s*schema\s*[-]?%\}([\s\S]*?)\{%[-]?\s*endschema\s*[-]?%\}/g;
+    const suppressedRanges = this.getSuppressedRanges();
     let match;
 
     while ((match = schemaRegex.exec(this.source)) !== null) {
