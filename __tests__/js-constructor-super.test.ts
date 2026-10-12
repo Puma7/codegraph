@@ -43,6 +43,10 @@ describe.each(['js', 'ts', 'jsx', 'tsx'])('imported constructor identity (%s)', 
 
   it.each([
     'export function invoke(Known) { const item = new Known(); return item.show(); }',
+    'export function invoke({ Known }) { const item = new Known(); return item.show(); }',
+    'export function invoke({ ctor: Known }) { const item = new Known(); return item.show(); }',
+    'export function invoke() { try { throw unknown; } catch (Known) { const item = new Known(); return item.show(); } }',
+    'export function invoke() { return values.map(Known => { const item = new Known(); return item.show(); }); }',
     'export function invoke() { const Known = factory(); const item = new Known(); return item.show(); }',
     'export function invoke() { let item = new Known(); item = factory(); return item.show(); }',
     'export function invoke() { let item = new Known(); item += 1; return item.show(); }',

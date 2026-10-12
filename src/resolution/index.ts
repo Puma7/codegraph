@@ -926,6 +926,9 @@ export class ReferenceResolver {
         return supers;
       },
 
+      getSuperclassNodes: (id: string) => this.queries.getOutgoingEdges(id, ['extends'])
+        .map(edge => this.nodeById(edge.target)).filter((node): node is Node => !!node),
+
       getSupertypeNodes: (id: string) => {
         const hit = this.supertypeNodeMemo.get(id);
         if (hit && hit.gen === this.supertypeGen) return hit.nodes;
