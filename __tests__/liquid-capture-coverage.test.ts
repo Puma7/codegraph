@@ -8,6 +8,11 @@ describe('standard Liquid capture declarations', () => {
     ['{%- capture title -%}Hello{%- endcapture -%}', 'title'],
     ['{% capture title_text %}Hello{% endcapture %}', 'title_text'],
     ['{% capture title-text %}Hello{% endcapture %}', 'title-text'],
+    ["{% capture 'title' %}Hello{% endcapture %}", 'title'],
+    ['{% capture "title" %}Hello{% endcapture %}', 'title'],
+    ['{% capture title extra %}Hello{% endcapture %}', 'title'],
+    ['{% liquid\n capture "title"\n endcapture\n%}', 'title'],
+    ['{% liquid\n capture title extra\n endcapture\n%}', 'title'],
     ['{% liquid\n  capture title\n    echo "Hello"\n  endcapture\n%}', 'title'],
     ['{% liquid\r\n  capture title\r\n    echo "Hello"\r\n  endcapture\r\n%}', 'title'],
     ['{% liquid\n  capture title # a declaration\n    echo "Hello"\n  endcapture\n%}', 'title'],
@@ -30,8 +35,8 @@ describe('standard Liquid capture declarations', () => {
     '{% liquid\n # capture fake\n%}',
     '{% liquid\n comment\n capture fake\n endcapture\n endcomment\n%}',
     '{% liquid\n raw\n capture fake\n endcapture\n endraw\n%}',
-    '{% capture fake extra %}x{% endcapture %}',
-    '{% liquid\n capture fake extra\n%}',
+    '{% capture %}x{% endcapture %}',
+    '{% liquid\n capture\n%}',
     '{% assign text = "capture fake" %}',
   ])('ignores non-executing or invalid declarations: %s', source => {
     expect(extract(source).nodes.some(n => n.name === 'fake')).toBe(false);

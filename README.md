@@ -845,20 +845,11 @@ is written):
 
 ### Liquid coverage
 
-Liquid support is a structural subset, not a complete interpreter or support for every host's extensions. The extractor applies to indexed `.liquid` files; `capture` and `assign` definitions do not require a Shopify directory layout.
+Liquid support is partial: indexed .liquid files expose ssign and capture declarations (including quoted capture names), literal Shopify snippet/section references and schema constants. Capture declarations do not require Shopify directories; this extracts declarations rather than validating every dialect's syntax.
 
-| Area | Indexed now | Boundary |
-|---|---|---|
-| Standard Liquid variables | Simple `assign` and `capture` declarations, including whitespace control and bare tags inside a multiline `liquid` tag | No evaluation of captured strings, expression dataflow or variable-read edges; other declaration tags are not covered |
-| Literal template dependencies | Quoted `render`/`include` names become Shopify snippet paths; quoted `section` names become Shopify section paths | These paths describe Shopify conventions, not a generic include loader; variable/computed targets remain unresolved |
-| Shopify schema and JSON | Schema constants and section-type references from the supported JSON template inputs | Editor JSON comments, section groups and schema comment/raw handling are tracked separately in [#2494](https://github.com/colbymchenry/codegraph/issues/2494) / [PR #2496](https://github.com/colbymchenry/codegraph/pull/2496) |
-| Jekyll | Standard declarations in indexed `.liquid` files | Unquoted `include`, `include_relative`, `_includes` lookup and Liquid inside HTML/Markdown/front matter are not supported as Jekyll dependencies |
-| Embedded code and assets | Standalone supported source files are indexed independently | No delegation of inline JavaScript/CSS in `.liquid`; no `asset_url` JS/CSS dependency edges or CSS language registration |
-| Runtime host data | No runtime evaluation | No consumer edges for settings, translations, dynamic block names or Shopify `content_for` |
+Quoted include targets currently use Shopify snippet paths. Jekyll's unquoted include, include_relative, _includes lookup and Liquid in HTML/Markdown are not supported as Jekyll dependencies. Embedded JavaScript/CSS, asset references, static theme blocks and runtime settings/translations need separate host-aware work. Missing edges do not establish that such files or data are unused.
 
-An absent Liquid dependency edge is not evidence that a template or asset is unused. A file being present in the index does not mean all code embedded in it was parsed. This first coverage extension implements standard `capture` declarations; the remaining host-specific work stays open in [#2498](https://github.com/colbymchenry/codegraph/issues/2498).
-
-The distinction follows the [standard Liquid variable tags](https://shopify.github.io/liquid/tags/variable/) and [Jekyll's own include rules](https://jekyllrb.com/docs/includes/); host extensions need separate routing and resolution, rather than guessing one host's paths for all Liquid projects.
+See [Liquid dialects](https://shopify.github.io/liquid/basics/variations/) and [Jekyll include rules](https://jekyllrb.com/docs/includes/).
 
 ## Measured cross-file coverage
 

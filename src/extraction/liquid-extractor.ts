@@ -417,10 +417,12 @@ export class LiquidExtractor {
     // Both spellings. Most of a modern theme's assigns are the bare kind.
     const declarations = [
       ...this.findTagOccurrences('assign', `(\\w+)\\s*=`),
-      ...this.findTagOccurrences('capture', `([A-Za-z_][\\w-]*)(?=\\s*(?:-?%\\}|$|#))`),
+      // Liquid Ruby and LiquidJS accept quoted names and permissive trailing
+      // tokens. This is a declaration extractor, not a dialect validator.
+      ...this.findTagOccurrences('capture', `(?:'([A-Za-z_][\\w-]*)'|"([A-Za-z_][\\w-]*)"|([A-Za-z_][\\w-]*))(?=\\s|[-]?%\\}|$)`),
     ].sort((a, b) => a.index - b.index);
     for (const match of declarations) {
-      const variableName = match.groups[1];
+      const variableName = match.groups.slice(1).find(Boolean);
       const line = this.getLineNumber(match.index);
 
       // Create a variable node

@@ -74,7 +74,6 @@ calls; a grep/read exploration is dozens.
 - If a tool reports a project isn't indexed (no \`.codegraph/\`), stop calling codegraph tools for that project for the rest of the session and use your built-in tools there instead. Indexing is the user's decision — mention they can run \`codegraph init\` if it comes up, but don't run it yourself.
 - Index lags file writes by ~1 second.
 - Cross-file resolution is best-effort name matching; ambiguous calls may return multiple candidates.
-- Liquid has partial dialect coverage: assign/capture definitions and literal Shopify file references are indexed, but embedded JS/CSS, Jekyll includes and runtime settings/translations are not; a missing edge there is not proof of unused code.
 - No live correctness validation — that's still the TypeScript compiler / test suite / linter's job. Codegraph supplements those with structural context they don't have.
 `;
 
