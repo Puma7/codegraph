@@ -419,10 +419,11 @@ export class LiquidExtractor {
       ...this.findTagOccurrences('assign', `(\\w+)\\s*=`),
       // Liquid Ruby and LiquidJS accept quoted names and permissive trailing
       // tokens. This is a declaration extractor, not a dialect validator.
-      ...this.findTagOccurrences('capture', `(?:'([A-Za-z_][\\w-]*)'|"([A-Za-z_][\\w-]*)"|([A-Za-z_][\\w-]*))(?=\\s|[-]?%\\}|$)`),
+      ...this.findTagOccurrences('capture', `(['"]?)([A-Za-z_][\\w-]*?)\\2(?=\\s|[-]?%\\}|$)`)
+        .map(match => ({ ...match, groups: [match.groups[0]!, match.groups[2]!] })),
     ].sort((a, b) => a.index - b.index);
     for (const match of declarations) {
-      const variableName = match.groups.slice(1).find(Boolean);
+      const variableName = match.groups[1];
       const line = this.getLineNumber(match.index);
 
       // Create a variable node

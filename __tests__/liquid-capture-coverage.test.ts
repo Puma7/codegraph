@@ -10,6 +10,7 @@ describe('standard Liquid capture declarations', () => {
     ['{% capture title-text %}Hello{% endcapture %}', 'title-text'],
     ["{% capture 'title' %}Hello{% endcapture %}", 'title'],
     ['{% capture "title" %}Hello{% endcapture %}', 'title'],
+    ['{% capture title-%}Hello{% endcapture %}', 'title'],
     ['{% capture title extra %}Hello{% endcapture %}', 'title'],
     ['{% liquid\n capture "title"\n endcapture\n%}', 'title'],
     ['{% liquid\n capture title extra\n endcapture\n%}', 'title'],
@@ -37,6 +38,8 @@ describe('standard Liquid capture declarations', () => {
     '{% liquid\n raw\n capture fake\n endcapture\n endraw\n%}',
     '{% capture %}x{% endcapture %}',
     '{% liquid\n capture\n%}',
+    "{% capture 'fake\" %}x{% endcapture %}",
+    '{% capture fake.extra %}x{% endcapture %}',
     '{% assign text = "capture fake" %}',
   ])('ignores non-executing or invalid declarations: %s', source => {
     expect(extract(source).nodes.some(n => n.name === 'fake')).toBe(false);

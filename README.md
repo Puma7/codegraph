@@ -845,11 +845,7 @@ is written):
 
 ### Liquid coverage
 
-Liquid support is partial: indexed .liquid files expose ssign and capture declarations (including quoted capture names), literal Shopify snippet/section references and schema constants. Capture declarations do not require Shopify directories; this extracts declarations rather than validating every dialect's syntax.
-
-Quoted include targets currently use Shopify snippet paths. Jekyll's unquoted include, include_relative, _includes lookup and Liquid in HTML/Markdown are not supported as Jekyll dependencies. Embedded JavaScript/CSS, asset references, static theme blocks and runtime settings/translations need separate host-aware work. Missing edges do not establish that such files or data are unused.
-
-See [Liquid dialects](https://shopify.github.io/liquid/basics/variations/) and [Jekyll include rules](https://jekyllrb.com/docs/includes/).
+Liquid coverage is partial. Indexed `.liquid` files expose `assign`/`capture` declarations, literal Shopify snippet/section paths and schema constants. Declarations do not require Shopify directories. Jekyll include lookup, Liquid in HTML/Markdown, embedded JS/CSS, asset/block dependencies and runtime settings/translations require separate host-aware support. Missing edges do not establish that these files or data are unused. See [Liquid dialects](https://shopify.github.io/liquid/basics/variations/).
 
 ## Measured cross-file coverage
 
