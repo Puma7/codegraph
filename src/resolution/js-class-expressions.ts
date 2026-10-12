@@ -4,7 +4,7 @@ import { blankStringContents, stripCommentsForRegex } from './strip-comments';
 
 const LANGUAGES = new Set(['javascript', 'jsx', 'typescript', 'tsx', 'arkts', 'vue', 'svelte']);
 const owners = new WeakMap<ResolutionContext, Map<string, Map<string, Node>>>();
-const scopes = new WeakMap<ResolutionContext, Map<string, { starts: number[]; frames: number[]; parents: number[]; code: string }>>();
+const scopes = new WeakMap<ResolutionContext, Map<string, { starts: number[]; frames: Int32Array; parents: number[] }>>();
 
 export function clearClassExpressionMemos(context: ResolutionContext): void {
   owners.delete(context);
@@ -18,6 +18,7 @@ export function gateClassExpression(
   if (!resolved) return resolved;
   const target = context.getNodeById?.(resolved.targetNodeId);
   if (!target || (target.kind !== 'class' && target.kind !== 'method')) return resolved;
+  if (!LANGUAGES.has(target.language)) return resolved;
   let files = owners.get(context);
   if (!files) owners.set(context, files = new Map());
   let byId = files.get(target.filePath);
@@ -65,7 +66,7 @@ function visible(node: Node, ref: UnresolvedRef, context: ResolutionContext): bo
     const chars = blankStringContents(stripCommentsForRegex(text, 'javascript'), regex).split('');
     for (let i = 0; i < regex.length; i += 2) for (let at = regex[i]!; at <= regex[i + 1]!; at++) chars[at] = ' ';
     const code = chars.join('');
-    const starts = [0], frames: number[] = [], parents = [-1];
+    const starts = [0], frames = new Int32Array(code.length + 1), parents = [-1];
     let frame = 0;
     for (let i = 0; i < code.length; i++) {
       frames[i] = frame;
@@ -73,7 +74,7 @@ function visible(node: Node, ref: UnresolvedRef, context: ResolutionContext): bo
       if (code[i] === '}') frame = parents[frame] ?? 0;
       if (code[i] === '\n') starts.push(i + 1);
     }
-    source = { starts, frames, parents, code };
+    source = { starts, frames, parents };
     files.set(ref.filePath, source);
   }
   const bindingAt = (source.starts[node.startLine - 1] ?? 0) + node.startColumn;
